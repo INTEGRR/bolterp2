@@ -1,27 +1,35 @@
-import { json } from "@remix-run/node";
-import type { ActionFunctionArgs } from "@remix-run/node";
-import { createServerClient } from "~/utils/supabase.server";
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/node";
+import { createServerSupabaseClient } from "~/utils/supabase.server";
 
-export const action = async ({ request }: ActionFunctionArgs) => {
+export async function action({ request }: ActionFunctionArgs) {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
   const response = new Response();
-  const supabase = createServerClient({ request, response });
-
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader) {
-    return json({ error: "Missing Authorization header" }, { status: 401 });
+  const supabase = createServerSupabaseClient({ request, response });
+  
+  // The token is already being processed by the createServerClient
+  // This route just needs to exist to handle the POST request
+  
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    return json({ error: "No session found" }, { status: 401, headers: response.headers });
   }
+  
+  return json({ success: true, session }, { headers: response.headers });
+}
 
-  const token = authHeader.replace("Bearer ", "");
-  const { data, error } = await supabase.auth.getUser(token);
-
-  if (error || !data.user) {
-    return json({ error: "Invalid token" }, { status: 401 });
+export async function loader({ request }: LoaderFunctionArgs) {
+  const response = new Response();
+  const supabase = createServerSupabaseClient({ request, response });
+  
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  if (!session) {
+    return json({ error: "No session found" }, { status: 401, headers: response.headers });
   }
-
-  return json(
-    { success: true },
-    {
-      headers: response.headers,
-    }
-  );
-};
+  
+  return json({ session }, { headers: response.headers });
+}

@@ -1,7 +1,6 @@
 import { useState } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { Form, useActionData, useNavigation, Link } from "@remix-run/react";
+import { json, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
+import { Form, Link, useActionData, useLoaderData } from "@remix-run/react";
 import {
   Page,
   Card,
@@ -9,66 +8,66 @@ import {
   TextField,
   Button,
   Text,
-  Banner,
   LegacyStack,
+  Banner,
 } from "@shopify/polaris";
-import { createServerClient } from "~/utils/supabase.server";
+import { createServerSupabaseClient } from "~/utils/supabase.server";
+import { getTranslations } from "~/utils/i18n.server";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export async function loader({ request }: LoaderFunctionArgs) {
   const response = new Response();
-  const supabase = createServerClient({ request, response });
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
+  const supabase = createServerSupabaseClient({ request, response });
+  
+  const { data: { session } } = await supabase.auth.getSession();
+  
   if (session) {
-    return redirect("/", {
-      headers: response.headers,
-    });
+    return redirect("/");
   }
+  
+  const translations = await getTranslations(request);
+  
+  return json({ translations }, { headers: response.headers });
+}
 
-  return json({}, { headers: response.headers });
-};
-
-export const action = async ({ request }: ActionFunctionArgs) => {
+export async function action({ request }: ActionFunctionArgs) {
   const response = new Response();
-  const supabase = createServerClient({ request, response });
-
+  const supabase = createServerSupabaseClient({ request, response });
+  
   const formData = await request.formData();
   const email = formData.get("email") as string;
-
+  
   if (!email) {
     return json(
       { error: "Email is required" },
       { status: 400, headers: response.headers }
     );
   }
-
+  
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${new URL(request.url).origin}/update-password`,
   });
-
+  
   if (error) {
     return json(
       { error: error.message },
       { status: 400, headers: response.headers }
     );
   }
-
+  
   return json(
-    { success: true, message: "Check your email for the password reset link" },
+    { success: true },
     { headers: response.headers }
   );
-};
+}
 
 export default function ResetPassword() {
+  const { translations } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
-
   const [email, setEmail] = useState("");
-
+  
+  const t = translations;
+  const auth = t.auth || {};
+  
   return (
     <Page>
       <div className="max-w-md mx-auto mt-12">
@@ -76,22 +75,24 @@ export default function ResetPassword() {
           <div className="p-6">
             <LegacyStack vertical spacing="loose">
               <Text variant="headingLg" as="h1">
-                Reset your password
+                {auth.resetPassword || "Reset Password"}
               </Text>
-
+              
               {actionData?.error && (
-                <Banner status="critical">{actionData.error}</Banner>
+                <Banner status="critical">
+                  {actionData.error}
+                </Banner>
               )}
-
-              {actionData?.success && (
-                <Banner status="success">{actionData.message}</Banner>
-              )}
-
-              {!actionData?.success && (
+              
+              {actionData?.success ? (
+                <Banner status="success">
+                  {auth.passwordResetSent || "A password reset email has been sent"}
+                </Banner>
+              ) : (
                 <Form method="post">
                   <FormLayout>
                     <TextField
-                      label="Email"
+                      label={auth.email || "Email"}
                       type="email"
                       name="email"
                       value={email}
@@ -99,22 +100,17 @@ export default function ResetPassword() {
                       autoComplete="email"
                       required
                     />
-                    <Button
-                      submit
-                      primary
-                      fullWidth
-                      loading={isSubmitting}
-                      disabled={isSubmitting}
-                    >
-                      Send reset link
+                    
+                    <Button primary submit fullWidth>
+                      {auth.resetPassword || "Reset Password"}
                     </Button>
                   </FormLayout>
                 </Form>
               )}
-
-              <div className="flex justify-center mt-4">
+              
+              <div className="text-center">
                 <Link to="/login" className="text-blue-600 hover:underline">
-                  Back to login
+                  {auth.login || "Back to Login"}
                 </Link>
               </div>
             </LegacyStack>
